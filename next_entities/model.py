@@ -1,16 +1,13 @@
 import json
-#import datetime,time
 import os
-#import shutil
 os.environ["RECOMPUTE"] = '1'
 import pickle
 from bert4keras.backend import keras, K, batch_gather
 from bert4keras.models import build_transformer_model
-from bert4keras.tokenizers import Tokenizer #, SpTokenizer
+from bert4keras.tokenizers import Tokenizer
 from bert4keras.layers import Layer, Embedding, Add
-from keras.layers import Lambda, Dense, Input #, Permute, Activation
+from keras.layers import Lambda, Dense, Input
 from keras.models import Model
-#import numpy as np
 from tqdm.notebook import tqdm
 import tensorflow as tf
 
@@ -297,20 +294,15 @@ with graph.as_default():
 
         type_loss = Lambda(mult_circle_loss, name='Circle-Loss')([final_input, final_output])
 
-        #train_loss = {
-        #    'Circle-Loss': lambda y_true, y_pred: y_pred
-        #}
-            
-
         model = Model(bert.model.inputs + [input_append_entity_ids], final_output)
         train_model = Model(bert.model.inputs + [input_append_entity_ids, final_input], type_loss)
-            
-        #optimizer = Adam(learning_rate=learning_rate)
-        #train_model.compile(loss=train_loss, optimizer=optimizer)
 
         weights_path = "../source/alala_meddg/param/outputModelWeights/ICLR_2021_Workshop_MLPCP_Track_1_模板生成填充_文本分类_模型简化2_增加转移概率/best_weights"
         model.load_weights(weights_path)
         print("load: ", weights_path)
+
+        # https://stackoverflow.com/questions/40850089/is-keras-thread-safe
+        model._make_predict_function() # have to initialize before threading
 
 
 def create_content(data_item):

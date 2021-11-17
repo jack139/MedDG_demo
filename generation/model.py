@@ -1,20 +1,11 @@
 import json
-#import datetime,time,
 import glob
 import os
-#import shutil
 import pickle
 from bert4keras.tokenizers import Tokenizer, SpTokenizer
-#from bert4keras.snippets import sequence_padding, DataGenerator
 from bert4keras.models import build_transformer_model
-from bert4keras.backend import keras, K #, batch_gather
-#from bert4keras.optimizers import Adam
-#from bert4keras.optimizers import extend_with_weight_decay
-#from bert4keras.optimizers import extend_with_layer_adaptation
-#from bert4keras.optimizers import extend_with_piecewise_linear_lr
-#from bert4keras.optimizers import extend_with_gradient_accumulation
-#from bert4keras.layers import Loss
-from keras.layers import Lambda, Dense, Input #, Permute, Activation
+from bert4keras.backend import keras, K
+from keras.layers import Lambda, Dense, Input
 from keras.models import Model
 import numpy as np
 from tqdm import tqdm
@@ -63,6 +54,9 @@ with graph.as_default():
             )
 
             t5.model.load_weights(name)
+
+            # https://stackoverflow.com/questions/40850089/is-keras-thread-safe
+            t5.model._make_predict_function() # have to initialize before threading
 
             encoders.append(t5.encoder)
             decoders.append(t5.decoder)

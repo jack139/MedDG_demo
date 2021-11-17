@@ -40,18 +40,6 @@ id2label = dict(enumerate(labels))
 label2id = {j: i for i, j in id2label.items()}
 num_labels = len(labels) * 2 + 1
 
-
-"""
-后面的代码使用的是bert类型的模型，如果你用的是albert，那么前几行请改为：
-model = build_transformer_model(
-    config_path,
-    checkpoint_path,
-    model='albert',
-)
-output_layer = 'Transformer-FeedForward-Norm'
-output = model.get_layer(output_layer).get_output_at(bert_layers - 1)
-"""
-
 with graph.as_default():
     with session.as_default():
 
@@ -67,17 +55,13 @@ with graph.as_default():
         output = CRF(output)
 
         model = Model(model.input, output)
-        #model.summary()
-
-        #model.compile(
-        #    loss=CRF.sparse_loss,
-        #    optimizer=Adam(learning_rate),
-        #    metrics=[CRF.sparse_accuracy]
-        #)
 
         weights_path = '../source/alala_meddg/param/outputModelWeights/ICLR_2021_Workshop_MLPCP_Track_1_实体抽取/best_weights'
         model.load_weights(weights_path)
         print("load: ", weights_path)
+
+        # https://stackoverflow.com/questions/40850089/is-keras-thread-safe
+        model._make_predict_function() # have to initialize before threading
 
 class NamedEntityRecognizer(ViterbiDecoder):
     """命名实体识别器
