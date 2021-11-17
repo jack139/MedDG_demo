@@ -1,17 +1,12 @@
 import pickle
-import random
-import shutil
 import copy
-from tqdm import tqdm
 import os
-import tensorflow as tf
-from tqdm import tqdm
-import json
+import re
 
 with open('./data/160_last_topic2num.pk', 'rb') as f:
     topic2num = pickle.load(f)
 
-import re
+
 
 def add_split_token(sentence):
     
@@ -30,44 +25,49 @@ def get_e(sen):
         + sorted(set(sen['Medicine']))
     )
 
+def convert(test_add_label_entities_with_predict_entities):
+    dig_test_data = []
 
-# 单独处理测试集
+    for dialog in test_add_label_entities_with_predict_entities:
+        new_dialog = []
+        history = []
 
-with open('./data/test_add_info_entities_with_predict_entities.pk', 'rb') as f:
-    test_add_label_entities_with_predict_entities = pickle.load(f)
+        for sen in dialog:
 
-dig_test_data = []
+            sen['Sentence'] = add_split_token(sen['Sentence'])
 
-for dialog in test_add_label_entities_with_predict_entities:
-    new_dialog = []
-    history = []
+            aa = get_e(sen)
 
-    for sen in dialog:
+            aa = [item for item in aa if item in topic2num]
 
-        sen['Sentence'] = add_split_token(sen['Sentence'])
+            if 'bert_word' in sen:
+                aa = sen['bert_word']
 
-        aa = get_e(sen)
+            if len(history) > 0 and sen['id'] == 'Doctor':
+                new_dialog.append({
+                    "history": copy.deepcopy(history),
+                    "bert_word": copy.deepcopy(aa),
+                    'response': sen['Sentence'],
+                })
 
-        aa = [item for item in aa if item in topic2num]
+            history.append(("病人：" if sen['id'] == "Patients" else "医生：") + sen['Sentence'])
+            
+        for dic in new_dialog[-1:]:
 
-        if 'bert_word' in sen:
-            aa = sen['bert_word']
+            dic['history'][-1] = dic['history'][-1] + "<" + ','.join(dic['bert_word']) + ">"
 
-        if len(history) > 0 and sen['id'] == 'Doctor':
-            new_dialog.append({
-                "history": copy.deepcopy(history),
-                "bert_word": copy.deepcopy(aa),
-                'response': sen['Sentence'],
-            })
+            dig_test_data.append(dic)
 
-        history.append(("病人：" if sen['id'] == "Patients" else "医生：") + sen['Sentence'])
-        
-    for dic in new_dialog[-1:]:
+    return dig_test_data
 
-        dic['history'][-1] = dic['history'][-1] + "<" + ','.join(dic['bert_word']) + ">"
 
-        dig_test_data.append(dic)
+if __name__ == '__main__':
+    # 单独处理测试集
+    with open('./data/test_add_info_entities_with_predict_entities.pk', 'rb') as f:
+        test_data = pickle.load(f)
 
-with open('./data/T5_dig_test_data.pk','wb') as f:
-    pickle.dump(dig_test_data, f)
+    dig_data = convert(test_data)
+
+    with open('./data/T5_dig_test_data.pk','wb') as f:
+        pickle.dump(dig_data, f)
 

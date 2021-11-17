@@ -1,22 +1,21 @@
-import json
-import datetime,time
+#import json
+#import datetime,time
 import os
-import  re
-import shutil
-import tensorflow as tf
+import re
 import pickle
-import numpy as np
 from bert4keras.backend import keras, K
 from bert4keras.models import build_transformer_model
 from bert4keras.tokenizers import Tokenizer
-from bert4keras.optimizers import Adam
-from bert4keras.snippets import sequence_padding, DataGenerator
-# from bert4keras.snippets import open
 from bert4keras.snippets import ViterbiDecoder, to_array
 from bert4keras.layers import ConditionalRandomField
 from keras.layers import Dense
 from keras.models import Model
 from tqdm import tqdm
+import tensorflow as tf
+
+# 建立默认session
+graph = tf.Graph()  # 解决多线程不同模型时，keras或tensorflow冲突的问题
+session = tf.Session(graph=graph)
 
 maxlen = 256
 epochs = 10
@@ -41,7 +40,6 @@ id2label = dict(enumerate(labels))
 label2id = {j: i for i, j in id2label.items()}
 num_labels = len(labels) * 2 + 1
 
-data_path = "./data/"
 
 """
 后面的代码使用的是bert类型的模型，如果你用的是albert，那么前几行请改为：
@@ -54,27 +52,32 @@ output_layer = 'Transformer-FeedForward-Norm'
 output = model.get_layer(output_layer).get_output_at(bert_layers - 1)
 """
 
-model = build_transformer_model(
-    config_path,
-    checkpoint_path,
-)
+with graph.as_default():
+    with session.as_default():
 
-output_layer = 'Transformer-%s-FeedForward-Norm' % (bert_layers - 1)
-output = model.get_layer(output_layer).output
-output = Dense(num_labels)(output)
-CRF = ConditionalRandomField(lr_multiplier=crf_lr_multiplier)
-output = CRF(output)
+        model = build_transformer_model(
+            config_path,
+            checkpoint_path,
+        )
 
-model = Model(model.input, output)
-model.summary()
+        output_layer = 'Transformer-%s-FeedForward-Norm' % (bert_layers - 1)
+        output = model.get_layer(output_layer).output
+        output = Dense(num_labels)(output)
+        CRF = ConditionalRandomField(lr_multiplier=crf_lr_multiplier)
+        output = CRF(output)
 
-model.compile(
-    loss=CRF.sparse_loss,
-    optimizer=Adam(learning_rate),
-    metrics=[CRF.sparse_accuracy]
-)
+        model = Model(model.input, output)
+        #model.summary()
 
+        #model.compile(
+        #    loss=CRF.sparse_loss,
+        #    optimizer=Adam(learning_rate),
+        #    metrics=[CRF.sparse_accuracy]
+        #)
 
+        weights_path = '../source/alala_meddg/param/outputModelWeights/ICLR_2021_Workshop_MLPCP_Track_1_实体抽取/best_weights'
+        model.load_weights(weights_path)
+        print("load: ", weights_path)
 
 class NamedEntityRecognizer(ViterbiDecoder):
     """命名实体识别器
@@ -87,7 +90,9 @@ class NamedEntityRecognizer(ViterbiDecoder):
         token_ids = tokenizer.tokens_to_ids(tokens)
         segment_ids = [0] * len(token_ids)
         token_ids, segment_ids = to_array([token_ids], [segment_ids])
-        nodes = model.predict([token_ids, segment_ids])[0]
+        with graph.as_default(): # 解决多线程不同模型时，keras或tensorflow冲突的问题
+            with session.as_default():
+                nodes = model.predict([token_ids, segment_ids])[0]
         labels = self.decode(nodes)
         entities, starting = [], False
         for i, label in enumerate(labels):
@@ -106,26 +111,9 @@ class NamedEntityRecognizer(ViterbiDecoder):
                 for w, l in entities]
 
 
-model.load_weights('../source/alala_meddg/param/outputModelWeights/ICLR_2021_Workshop_MLPCP_Track_1_实体抽取/best_weights')
-
-NER = NamedEntityRecognizer(trans=K.eval(CRF.trans), starts=[0], ends=[0])
-
-with open(os.path.join(data_path, "test_add_info.pk"), "rb") as f:
-    test_data = pickle.load(f)
-
-test_crf_res = []
-
-#sentence的数据处理
-for each_data in tqdm(test_data):
-    each_res = []
-    for item in each_data:
-        item_res = []
-        item_res.append(item['Sentence'])
-        item_ner = NER.recognize(item['Sentence'])
-#         print('原文',item['Sentence'],'标签',item_ner)
-        item_res.append(item_ner)
-        each_res.append(item_res)
-    test_crf_res.append(each_res)
+with graph.as_default(): # 解决多线程不同模型时，keras或tensorflow冲突的问题
+    with session.as_default():
+        NER = NamedEntityRecognizer(trans=K.eval(CRF.trans), starts=[0], ends=[0])
 
 
 def get_youyin(sentence):
@@ -185,39 +173,67 @@ def get_time(sentence):
         return True
     return False
 
+# 预测
+def predict(test_data):
 
-test_data_add_entities = []
+    test_crf_res = []
 
-for test_data_item, test_entities_item in zip(test_data, test_crf_res):
-    
-    test_data_add_entities_item = []
-    
-    for test_data_item_s, test_entities_item_s in zip(test_data_item, test_entities_item):
+    #sentence的数据处理
+    for each_data in tqdm(test_data):
+        each_res = []
+        for item in each_data:
+            item_res = []
+            item_res.append(item['Sentence'])
+            item_ner = NER.recognize(item['Sentence'])
+    #         print('原文',item['Sentence'],'标签',item_ner)
+            item_res.append(item_ner)
+            each_res.append(item_res)
+        test_crf_res.append(each_res)
+
+    test_data_add_entities = []
+
+    for test_data_item, test_entities_item in zip(test_data, test_crf_res):
         
-        test_data_item_s =  {k: set(v) if type(v) == list else v for k,v in test_data_item_s.items()}
+        test_data_add_entities_item = []
         
-        s, entities = test_entities_item_s
-        
-        for entity_text, entity_type in entities:
+        for test_data_item_s, test_entities_item_s in zip(test_data_item, test_entities_item):
             
-            test_data_item_s[entity_type].add(entity_text)
-        
-        # 增加属性
-        
-        if get_location(s):
-            test_data_item_s['Attribute'].add('位置')
-        if get_youyin(s):
-            test_data_item_s['Attribute'].add('诱因')
-        if get_tong(s):
-            test_data_item_s['Attribute'].add('性质')
-        if get_time(s):
-            test_data_item_s['Attribute'].add('时长')
+            test_data_item_s =  {k: set(v) if type(v) == list else v for k,v in test_data_item_s.items()}
             
-        test_data_item_s =  {k: list(v) if type(v) == set else v for k,v in test_data_item_s.items()}
-        
-        test_data_add_entities_item.append(test_data_item_s)
-    
-    test_data_add_entities.append(test_data_add_entities_item)
+            s, entities = test_entities_item_s
             
-with open(os.path.join(data_path, "test_add_info_entities.pk"), "wb") as f:
-    pickle.dump(test_data_add_entities, f)
+            for entity_text, entity_type in entities:
+                
+                test_data_item_s[entity_type].add(entity_text)
+            
+            # 增加属性
+            
+            if get_location(s):
+                test_data_item_s['Attribute'].add('位置')
+            if get_youyin(s):
+                test_data_item_s['Attribute'].add('诱因')
+            if get_tong(s):
+                test_data_item_s['Attribute'].add('性质')
+            if get_time(s):
+                test_data_item_s['Attribute'].add('时长')
+                
+            test_data_item_s =  {k: list(v) if type(v) == set else v for k,v in test_data_item_s.items()}
+            
+            test_data_add_entities_item.append(test_data_item_s)
+        
+        test_data_add_entities.append(test_data_add_entities_item)
+
+    return test_data_add_entities
+
+
+if __name__ == '__main__':
+
+    data_path = "./data/"
+
+    with open(os.path.join(data_path, "test_add_info.pk"), "rb") as f:
+        load_test_data = pickle.load(f)
+
+    test_data_add_entities_result = predict(load_test_data)
+                
+    with open(os.path.join(data_path, "test_add_info_entities.pk"), "wb") as f:
+        pickle.dump(test_data_add_entities_result, f)

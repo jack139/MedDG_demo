@@ -1,26 +1,29 @@
 import json
-import datetime,time,glob
+#import datetime,time,
+import glob
 import os
-import shutil
-import tensorflow as tf
+#import shutil
 import pickle
-
 from bert4keras.tokenizers import Tokenizer, SpTokenizer
-from bert4keras.snippets import sequence_padding, DataGenerator
+#from bert4keras.snippets import sequence_padding, DataGenerator
 from bert4keras.models import build_transformer_model
-from bert4keras.backend import keras, K, batch_gather
-from bert4keras.optimizers import Adam
-from bert4keras.optimizers import extend_with_weight_decay
-from bert4keras.optimizers import extend_with_layer_adaptation
-from bert4keras.optimizers import extend_with_piecewise_linear_lr
-from bert4keras.optimizers import extend_with_gradient_accumulation
-from bert4keras.layers import Loss
-
-from keras.layers import Lambda, Dense, Input, Permute, Activation
+from bert4keras.backend import keras, K #, batch_gather
+#from bert4keras.optimizers import Adam
+#from bert4keras.optimizers import extend_with_weight_decay
+#from bert4keras.optimizers import extend_with_layer_adaptation
+#from bert4keras.optimizers import extend_with_piecewise_linear_lr
+#from bert4keras.optimizers import extend_with_gradient_accumulation
+#from bert4keras.layers import Loss
+from keras.layers import Lambda, Dense, Input #, Permute, Activation
 from keras.models import Model
-
 import numpy as np
 from tqdm import tqdm
+import tensorflow as tf
+
+# 建立默认session
+graph = tf.Graph()  # 解决多线程不同模型时，keras或tensorflow冲突的问题
+session = tf.Session(graph=graph)
+
 
 max_in_len = 512
 max_out_len = 128
@@ -45,23 +48,25 @@ encoders = []
 decoders = []
 models = []
 
-for idx, name in enumerate(tqdm(weights_paths)):
-    print('load: ', name)
+with graph.as_default():
+    with session.as_default():
+        for idx, name in enumerate(tqdm(weights_paths)):
+            print('load: ', name)
 
-    t5 = build_transformer_model(
-        config_path=config_path,
-        # checkpoint_path=pretrain_checkpoint_path,
-        keep_tokens=keep_tokens,
-        model='t5.1.1',
-        return_keras_model=False,
-        name='T5',
-    )
+            t5 = build_transformer_model(
+                config_path=config_path,
+                # checkpoint_path=pretrain_checkpoint_path,
+                keep_tokens=keep_tokens,
+                model='t5.1.1',
+                return_keras_model=False,
+                name='T5',
+            )
 
-    t5.model.load_weights(name)
+            t5.model.load_weights(name)
 
-    encoders.append(t5.encoder)
-    decoders.append(t5.decoder)
-    models.append(t5.model)
+            encoders.append(t5.encoder)
+            decoders.append(t5.decoder)
+            models.append(t5.model)
 
 
 from bert4keras.snippets import AutoRegressiveDecoder
@@ -76,13 +81,15 @@ class AutoTitleMult(AutoRegressiveDecoder):
 
         for idx, c_encoded in enumerate(inputs):
           
-          probas = self.last_token(decoders[idx]).predict([c_encoded, output_ids])
-          
-          # 特殊情况移除过短序列的结束标记概率
-          if output_ids.shape[1] < self.minlen - 1:
-              probas[:,self.end_id] = 1e-12
+            with graph.as_default(): # 解决多线程不同模型时，keras或tensorflow冲突的问题
+                with session.as_default():
+                    probas = self.last_token(decoders[idx]).predict([c_encoded, output_ids])
+              
+            # 特殊情况移除过短序列的结束标记概率
+            if output_ids.shape[1] < self.minlen - 1:
+                probas[:,self.end_id] = 1e-12
 
-          all_probas.append(probas)
+            all_probas.append(probas)
 
         all_probas = np.array(all_probas)
 
@@ -91,7 +98,9 @@ class AutoTitleMult(AutoRegressiveDecoder):
     def generate(self, c_tokens, topk=1):
         c_token_ids = tokenizer.tokens_to_ids(c_tokens)
         
-        c_encodeds = [encoder.predict(np.array([c_token_ids]))[0] for encoder in encoders]
+        with graph.as_default(): # 解决多线程不同模型时，keras或tensorflow冲突的问题
+            with session.as_default():
+                c_encodeds = [encoder.predict(np.array([c_token_ids]))[0] for encoder in encoders]
 
         output_ids = self.beam_search(c_encodeds, topk=topk)  # 基于beam search
         
@@ -142,17 +151,17 @@ def predict(data):
     
     return pred_replies
 
-# 开始验证
-# 加载数据
-import pickle
+if __name__ == '__main__':
+    # 开始验证
+    # 加载数据
 
-data_path = "./data/"
+    data_path = "./data/"
 
-with open(os.path.join(data_path, "T5_dig_test_data.pk"), "rb") as f:
-    dig_test_data = pickle.load(f)
+    with open(os.path.join(data_path, "T5_dig_test_data.pk"), "rb") as f:
+        dig_test_data = pickle.load(f)
 
-ans_max_confidence = predict(dig_test_data)
-print(ans_max_confidence)
+    ans_max_confidence = predict(dig_test_data)
+    print(ans_max_confidence)
 
-with open(os.path.join(data_path, "ans_max_confidence.pk"), 'wb') as f:
-    pickle.dump(ans_max_confidence, f)
+    with open(os.path.join(data_path, "ans_max_confidence.pk"), 'wb') as f:
+        pickle.dump(ans_max_confidence, f)

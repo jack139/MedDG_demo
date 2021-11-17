@@ -1,26 +1,23 @@
 import json
-import datetime,time
+#import datetime,time
 import os
-import shutil
-import tensorflow as tf
+#import shutil
 os.environ["RECOMPUTE"] = '1'
-
 import pickle
 from bert4keras.backend import keras, K, batch_gather
 from bert4keras.models import build_transformer_model
-from bert4keras.tokenizers import Tokenizer, SpTokenizer
-from bert4keras.optimizers import Adam, extend_with_piecewise_linear_lr
-from bert4keras.snippets import sequence_padding, DataGenerator
-from bert4keras.snippets import DataGenerator, AutoRegressiveDecoder
-from bert4keras.layers import Loss
-
-from keras.layers import Lambda, Dense, Input, Permute, Activation
+from bert4keras.tokenizers import Tokenizer #, SpTokenizer
+from bert4keras.layers import Layer, Embedding, Add
+from keras.layers import Lambda, Dense, Input #, Permute, Activation
 from keras.models import Model
-
-import numpy as np
+#import numpy as np
 from tqdm.notebook import tqdm
-# from rouge import Rouge  # pip install rouge
-# from nltk.translate.bleu_score import sentence_bleu, SmoothingFunction
+import tensorflow as tf
+
+# 建立默认session
+graph = tf.Graph()  # 解决多线程不同模型时，keras或tensorflow冲突的问题
+session = tf.Session(graph=graph)
+
 
 projectName = 'ICLR_2021_Workshop_MLPCP_Track_1_模板生成填充_文本分类_模型简化2_增加转移概率'
 
@@ -32,16 +29,11 @@ dict_path = '../nlp_model/PCL-MedBERT-wwm/vocab.txt'
 tokenizer = Tokenizer(dict_path, do_lower_case=True)
 
 maxlen = 512
-epochs = 100
-steps_per_epoch = 1024
-batch_size = 16
 
 pp = 2
-skip_epochs = 50
 
 append_entities_len = 40
 
-learning_rate = 1e-5
 
 i2c = [
     ('None', 'None'),
@@ -213,7 +205,7 @@ c2i = { v:idx  for idx, v in enumerate(i2c) }
 data_path = "./data/"
 
 
-from bert4keras.layers import Layer, Embedding, Add
+
 
 class MaskMean(Layer):
     
@@ -259,66 +251,66 @@ def mult_circle_loss(inputs, mask=None):
     
     return pp * p_loss + n_loss
 
-bert = build_transformer_model(
-    config_path=config_path,
-    checkpoint_path=checkpoint_path,
-    return_keras_model=False,
-)
+with graph.as_default():
+    with session.as_default():
+        bert = build_transformer_model(
+            config_path=config_path,
+            checkpoint_path=checkpoint_path,
+            return_keras_model=False,
+        )
 
-mean_output = MaskMean(name="Mask-Mean")(bert.model.output)
-    
-final_output = Dense(
-    units=int(mean_output.shape[-1]), 
-    kernel_initializer=bert.initializer, 
-    activation="tanh",
-    name="Label-Tanh"
-)(mean_output)
+        mean_output = MaskMean(name="Mask-Mean")(bert.model.output)
+            
+        final_output = Dense(
+            units=int(mean_output.shape[-1]), 
+            kernel_initializer=bert.initializer, 
+            activation="tanh",
+            name="Label-Tanh"
+        )(mean_output)
 
-final_output = Dense(
-    units=len(i2c), 
-    kernel_initializer=bert.initializer, 
-    name="Label-Id"
-)(final_output)
+        final_output = Dense(
+            units=len(i2c), 
+            kernel_initializer=bert.initializer, 
+            name="Label-Id"
+        )(final_output)
 
-# 增加转移概率
+        # 增加转移概率
 
-input_append_entity_ids = Input(shape=(append_entities_len, ), name='Input-Append-Entities')
+        input_append_entity_ids = Input(shape=(append_entities_len, ), name='Input-Append-Entities')
 
-append_entity_represent = Embedding(
-    input_dim=len(i2c),
-    output_dim=len(i2c),
-    embeddings_initializer=bert.initializer,
-    mask_zero=True,
-    name='Entities-Trans'
-)(input_append_entity_ids)
-
-
-append_entity_represent = MaskMean(name="Entities-Mean")(append_entity_represent)
-
-# 加和
-final_output = Add(name="Final-Add")([final_output, append_entity_represent])
+        append_entity_represent = Embedding(
+            input_dim=len(i2c),
+            output_dim=len(i2c),
+            embeddings_initializer=bert.initializer,
+            mask_zero=True,
+            name='Entities-Trans'
+        )(input_append_entity_ids)
 
 
-final_input = Input(shape=(len(i2c), ), name='Output-Label-Id')
+        append_entity_represent = MaskMean(name="Entities-Mean")(append_entity_represent)
 
-type_loss = Lambda(mult_circle_loss, name='Circle-Loss')([final_input, final_output])
-
-train_loss = {
-    'Circle-Loss': lambda y_true, y_pred: y_pred
-}
-    
-
-model = Model(bert.model.inputs + [input_append_entity_ids], final_output)
-train_model = Model(bert.model.inputs + [input_append_entity_ids, final_input], type_loss)
-    
-optimizer = Adam(learning_rate=learning_rate)
-train_model.compile(loss=train_loss, optimizer=optimizer)
-
-model.load_weights("../source/alala_meddg/param/outputModelWeights/ICLR_2021_Workshop_MLPCP_Track_1_模板生成填充_文本分类_模型简化2_增加转移概率/best_weights")
+        # 加和
+        final_output = Add(name="Final-Add")([final_output, append_entity_represent])
 
 
-with open(os.path.join(data_path, "test_add_info_entities.pk"), "rb") as f:
-    test_data = pickle.load(f)
+        final_input = Input(shape=(len(i2c), ), name='Output-Label-Id')
+
+        type_loss = Lambda(mult_circle_loss, name='Circle-Loss')([final_input, final_output])
+
+        #train_loss = {
+        #    'Circle-Loss': lambda y_true, y_pred: y_pred
+        #}
+            
+
+        model = Model(bert.model.inputs + [input_append_entity_ids], final_output)
+        train_model = Model(bert.model.inputs + [input_append_entity_ids, final_input], type_loss)
+            
+        #optimizer = Adam(learning_rate=learning_rate)
+        #train_model.compile(loss=train_loss, optimizer=optimizer)
+
+        weights_path = "../source/alala_meddg/param/outputModelWeights/ICLR_2021_Workshop_MLPCP_Track_1_模板生成填充_文本分类_模型简化2_增加转移概率/best_weights"
+        model.load_weights(weights_path)
+        print("load: ", weights_path)
 
 
 def create_content(data_item):
@@ -367,7 +359,9 @@ def predict(data):
         batch_append_entity_ids.append(append_entity_ids)
         
 
-    y = model.predict([batch_token_ids, batch_segment_ids, batch_append_entity_ids], batch_size=64, verbose=1)
+    with graph.as_default(): # 解决多线程不同模型时，keras或tensorflow冲突的问题
+        with session.as_default():
+            y = model.predict([batch_token_ids, batch_segment_ids, batch_append_entity_ids], batch_size=64, verbose=1)
 
     predict_data = []
 
@@ -384,22 +378,34 @@ def predict(data):
         
     return predict_data
 
-print("预测测试集")
-test_predict_data = predict(test_data)
 
-for data_item, test_predict_data_item in zip(test_data, test_predict_data):
-    
-    add_item = {
-        'id': 'Doctor',
-        'Sentence': '',
-        'Symptom': list(test_predict_data_item['Symptom']),
-        'Medicine': list(test_predict_data_item['Medicine']),
-        'Test': list(test_predict_data_item['Test']),
-        'Attribute': list(test_predict_data_item['Attribute']),
-        'Disease': list(test_predict_data_item['Disease']),
-    }
-    
-    data_item.append(add_item)
+def predict_test(test_data):
+    test_predict_data = predict(test_data)
 
-with open(os.path.join(data_path, "test_add_info_entities_with_predict_entities.pk"), "wb") as f:
-    pickle.dump(test_data, f)
+    for data_item, test_predict_data_item in zip(test_data, test_predict_data):
+        
+        add_item = {
+            'id': 'Doctor',
+            'Sentence': '',
+            'Symptom': list(test_predict_data_item['Symptom']),
+            'Medicine': list(test_predict_data_item['Medicine']),
+            'Test': list(test_predict_data_item['Test']),
+            'Attribute': list(test_predict_data_item['Attribute']),
+            'Disease': list(test_predict_data_item['Disease']),
+        }
+        
+        data_item.append(add_item)
+
+    return test_data
+
+
+if __name__ == '__main__':
+    print("预测测试集")
+
+    with open(os.path.join(data_path, "test_add_info_entities.pk"), "rb") as f:
+        test_data = pickle.load(f)
+
+    test_data = predict_test(test_data)
+
+    with open(os.path.join(data_path, "test_add_info_entities_with_predict_entities.pk"), "wb") as f:
+        pickle.dump(test_data, f)
