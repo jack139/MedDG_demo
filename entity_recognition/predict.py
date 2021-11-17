@@ -27,9 +27,9 @@ crf_lr_multiplier = 1000  # 必要时扩大CRF层的学习率
 
 
 # bert配置
-config_path = '../../nlp_model/chinese_roberta_wwm_ext_L-12_H-768_A-12/bert_config.json'
-checkpoint_path = '../../nlp_model/chinese_roberta_wwm_ext_L-12_H-768_A-12/bert_model.ckpt'
-dict_path = '../../nlp_model/chinese_roberta_wwm_ext_L-12_H-768_A-12/vocab.txt'
+config_path = '../nlp_model/chinese_roberta_wwm_ext_L-12_H-768_A-12/bert_config.json'
+checkpoint_path = '../nlp_model/chinese_roberta_wwm_ext_L-12_H-768_A-12/bert_model.ckpt'
+dict_path = '../nlp_model/chinese_roberta_wwm_ext_L-12_H-768_A-12/vocab.txt'
 
 
 # 建立分词器
@@ -106,7 +106,7 @@ class NamedEntityRecognizer(ViterbiDecoder):
                 for w, l in entities]
 
 
-model.load_weights('../../alala_meddg/param/outputModelWeights/ICLR_2021_Workshop_MLPCP_Track_1_实体抽取/best_weights')
+model.load_weights('../source/alala_meddg/param/outputModelWeights/ICLR_2021_Workshop_MLPCP_Track_1_实体抽取/best_weights')
 
 NER = NamedEntityRecognizer(trans=K.eval(CRF.trans), starts=[0], ends=[0])
 

@@ -24,9 +24,9 @@ from tqdm.notebook import tqdm
 
 projectName = 'ICLR_2021_Workshop_MLPCP_Track_1_模板生成填充_文本分类_模型简化2_增加转移概率'
 
-config_path = '../../nlp_model/PCL-MedBERT-wwm/bert_config.json'
-checkpoint_path = '../../nlp_model/PCL-MedBERT-wwm/bert_model.ckpt'
-dict_path = '../../nlp_model/PCL-MedBERT-wwm/vocab.txt'
+config_path = '../nlp_model/PCL-MedBERT-wwm/bert_config.json'
+checkpoint_path = '../nlp_model/PCL-MedBERT-wwm/bert_model.ckpt'
+dict_path = '../nlp_model/PCL-MedBERT-wwm/vocab.txt'
 
 # 建立分词器
 tokenizer = Tokenizer(dict_path, do_lower_case=True)
@@ -314,7 +314,7 @@ train_model = Model(bert.model.inputs + [input_append_entity_ids, final_input], 
 optimizer = Adam(learning_rate=learning_rate)
 train_model.compile(loss=train_loss, optimizer=optimizer)
 
-model.load_weights("../../alala_meddg/param/outputModelWeights/ICLR_2021_Workshop_MLPCP_Track_1_模板生成填充_文本分类_模型简化2_增加转移概率/best_weights")
+model.load_weights("../source/alala_meddg/param/outputModelWeights/ICLR_2021_Workshop_MLPCP_Track_1_模板生成填充_文本分类_模型简化2_增加转移概率/best_weights")
 
 
 with open(os.path.join(data_path, "test_add_info_entities.pk"), "rb") as f:
@@ -403,129 +403,3 @@ for data_item, test_predict_data_item in zip(test_data, test_predict_data):
 
 with open(os.path.join(data_path, "test_add_info_entities_with_predict_entities.pk"), "wb") as f:
     pickle.dump(test_data, f)
-
-
-# 额外预测训练集与开发集
-
-def create_content_label(data_item):
-    
-    for idx in range(len(data_item)-1, 0, -1):
-        
-        if data_item[idx]['id'] == 'Doctor':
-            
-            label = data_item[idx].copy()
-
-            del label['id']
-            del label['Sentence']
-            
-            label = {k:set(v) for k,v in label.items()}
-
-            content = ""
-            append_entities = set()
-
-            for s_idx in range(idx-1, -1, -1):
-                
-                sentence = data_item[s_idx]
-                
-                for k, vs in sentence.items():
-                    if type(vs) == list:
-                        for v in vs:
-                            append_entities.add((v, k))
-                            
-                content = sentence['Sentence'] + content
-
-            yield content, append_entities, label
-    
-
-import copy
-
-# 训练集与开发集 专用
-def predict_all(data):
-
-    batch_token_ids, batch_segment_ids, batch_append_entity_ids  = [], [], []
-    
-    data_map = []
-
-    for data_item in data:
-        
-        data_map_item = []
-        
-        for content, append_entities, label in create_content_label(data_item):
-
-            token_ids, _ = tokenizer.encode(content)
-            token_ids = token_ids[1:-1]
-
-            if len(token_ids) > maxlen - 2:
-                token_ids = token_ids[-maxlen+2:]
-
-            token_ids = [tokenizer.token_to_id("[CLS]")] + token_ids + [tokenizer.token_to_id("[SEP]")]
-            token_ids += [0] * (maxlen - len(token_ids))
-            
-            data_map_item.append(len(batch_token_ids))
-
-            batch_token_ids.append(token_ids)
-            batch_segment_ids.append([0] * maxlen)
-            
-            # 增加出现实体
-            append_entity_ids = [c2i[item] for item in append_entities if item in c2i]
-            append_entity_ids += [0] * (append_entities_len - len(append_entity_ids))
-
-            batch_append_entity_ids.append(append_entity_ids)
-        
-        data_map.append(data_map_item)
-
-    y = model.predict([batch_token_ids, batch_segment_ids, batch_append_entity_ids], batch_size=128, verbose=1)
-
-    predict_data = []
-
-    for data_item, data_map_item in zip(data, data_map):
-        
-        data_item = copy.deepcopy(data_item)
-        
-        data_map_item_idx = 0
-        
-        for idx in range(len(data_item)-1, 0, -1):
-            
-            if data_item[idx]['id'] == 'Doctor':
-                
-                y_idx = data_map_item[data_map_item_idx]
-                
-                # 预测对应的值
-                predict_data_item = {k:set() for e, k in i2c[1:]}
-
-                for item_idx, item in enumerate(y[y_idx]):
-                    if item > 0 and item_idx > 0:
-                        e, t = i2c[item_idx]
-                        predict_data_item[t].add(e)
-                
-                data_item[idx]['bert_word'] = (sorted(predict_data_item['Symptom']) 
-                                               + sorted(predict_data_item['Attribute'])
-                                               + sorted(predict_data_item['Test'])
-                                               + sorted(predict_data_item['Disease'])
-                                               + sorted(predict_data_item['Medicine']))
-
-                data_map_item_idx += 1
-        
-        predict_data.append(data_item)
-
-    return predict_data
-
-'''
-print("预测开发集")
-with open(os.path.join(data_path, "dev_data.pk"), "rb") as f:
-    dev_data = pickle.load(f)
-
-dev_data_with_bert_entites = predict_all(dev_data)
-
-with open(os.path.join(data_path, "dev_data_with_bert_entites.pk"), 'wb') as f:
-    pickle.dump(dev_data_with_bert_entites, f)
-
-print("预测训练集")
-with open(os.path.join(data_path, "train_data.pk"), "rb") as f:
-    train_data = pickle.load(f)
-
-train_data_with_bert_entites = predict_all(train_data)
-
-with open(os.path.join(data_path, "train_data_with_bert_entites.pk"), 'wb') as f:
-    pickle.dump(train_data_with_bert_entites, f)
-'''

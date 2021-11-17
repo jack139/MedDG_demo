@@ -1,28 +1,8 @@
 import os
 import pickle, json
-from sklearn.model_selection import train_test_split
 
-
-all_data_path = "../dataset/MedDG/MedDG_train.json"
-all_test_path = "../dataset/MedDG/MedDG_test.json"
-
-train_data_path = "./data/train_data.pk"
-dev_data_path = "./data/dev_data.pk"
+all_test_path = "./data/test.json"
 test_data_path = "./data/test_add_info.pk"
-
-
-# 训练数据
-all_data = json.load(open(all_data_path))
-
-train_data, dev_data = train_test_split(all_data, test_size=0.1, random_state=123456)
-
-with open(train_data_path, "wb") as f:
-    pickle.dump(train_data, f)
-
-with open(dev_data_path, "wb") as f:
-    pickle.dump(dev_data, f)
-
-print("训练数据预处理完成", len(all_data))
 
 
 # 测试数据

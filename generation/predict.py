@@ -25,22 +25,28 @@ from tqdm import tqdm
 max_in_len = 512
 max_out_len = 128
 
-config_path = '../../nlp_model/mt5_base/mt5_base_config.json'
-pretrain_checkpoint_path = '../../nlp_model/mt5_base/model.ckpt-1000000'
-spm_path = '../../nlp_model/mt5_base/sentencepiece_cn.model'
-keep_tokens_path = '../../nlp_model/mt5_base/sentencepiece_cn_keep_tokens.json'
+config_path = '../nlp_model/mt5_base/mt5_base_config.json'
+pretrain_checkpoint_path = '../nlp_model/mt5_base/model.ckpt-1000000'
+spm_path = '../nlp_model/mt5_base/sentencepiece_cn.model'
+keep_tokens_path = '../nlp_model/mt5_base/sentencepiece_cn_keep_tokens.json'
 
 tokenizer = SpTokenizer(spm_path, token_start=None, token_end='</s>')
 keep_tokens = json.load(open(keep_tokens_path))
 
 
-weights_paths = glob.glob('../../alala_meddg/param/outputModelWeights/ICLR_2021_Workshop_MLPCP_Track_1_生成*/best_weights')
+# 使用4个模型
+#weights_paths = glob.glob('../source/alala_meddg/param/outputModelWeights/ICLR_2021_Workshop_MLPCP_Track_1_生成*/best_weights')
+# 只使用difficult模型（对内存小的环境）
+weights_paths = glob.glob('../source/alala_meddg/param/outputModelWeights/ICLR_2021_Workshop_MLPCP_Track_1_生成_difficult*/best_weights')
+# 只使用base模型（对内存小的环境）
+#weights_paths = glob.glob('../source/alala_meddg/param/outputModelWeights/ICLR_2021_Workshop_MLPCP_Track_1_生成_base*/best_weights')
 
 encoders = []
 decoders = []
 models = []
 
 for idx, name in enumerate(tqdm(weights_paths)):
+    print('load: ', name)
 
     t5 = build_transformer_model(
         config_path=config_path,
@@ -146,6 +152,7 @@ with open(os.path.join(data_path, "T5_dig_test_data.pk"), "rb") as f:
     dig_test_data = pickle.load(f)
 
 ans_max_confidence = predict(dig_test_data)
+print(ans_max_confidence)
 
 with open(os.path.join(data_path, "ans_max_confidence.pk"), 'wb') as f:
     pickle.dump(ans_max_confidence, f)

@@ -2,7 +2,7 @@ import os
 import pickle, json
 
 
-test_path = "../dataset/MedDG/MedDG_test.json"
+test_path = "./data/test.json"
 result_path = "./data/ans_max_confidence.pk"
 
 test_data = json.load(open(test_path))
@@ -18,7 +18,7 @@ for item, output in zip(test_data, result_data):
 
 json.dump(
     final_result,
-    open('MedDG_test.json', 'w', encoding='utf-8'),
+    open('test_output.json', 'w', encoding='utf-8'),
     indent=4,
     ensure_ascii=False
 )
